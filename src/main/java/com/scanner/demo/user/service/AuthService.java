@@ -1,6 +1,6 @@
 package com.scanner.demo.user.service;
 
-import com.scanner.demo.utils.security.JwtUtil;
+import com.scanner.demo.global.security.JwtUtil;
 import com.scanner.demo.user.dto.LoginRequest;
 import com.scanner.demo.user.dto.TokenResponse;
 import com.scanner.demo.user.entity.User;
@@ -29,6 +29,6 @@ public class AuthService {
 
         // 3. 서명이 포함된 안전한 JWT 토큰 생성 및 반환
         String token = jwtUtil.createToken(user.getUserId(), user.getRole());
-        return new TokenResponse(token, "Bearer");
+        return new TokenResponse(token, "Bearer", user.getUserId(), user.getRole());
     }
 }

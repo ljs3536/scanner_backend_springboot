@@ -2,6 +2,8 @@ package com.scanner.demo.user.entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
@@ -9,6 +11,8 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "users")
 @Getter
+@Builder
+@AllArgsConstructor
 @NoArgsConstructor(access = AccessLevel.PROTECTED) // 기본 생성자 접근 제어
 public class User {
 
@@ -19,9 +23,6 @@ public class User {
 
     @Column(name = "user_id", nullable = false, unique = true, length = 50)
     private String userId;
-
-    @Column(nullable = false, length = 255)
-    private String email;
 
     @Column(nullable = false, length = 255)
     private String password;
