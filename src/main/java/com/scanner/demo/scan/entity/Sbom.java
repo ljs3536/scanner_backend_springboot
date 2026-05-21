@@ -16,10 +16,6 @@ public class Sbom {
     @Column(name = "sbom_id", length = 50)
     private String sbomId;
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "scan_id", nullable = false)
-    private ScanHistory scanHistory;
-
     @Column(length = 20)
     private String status;
 

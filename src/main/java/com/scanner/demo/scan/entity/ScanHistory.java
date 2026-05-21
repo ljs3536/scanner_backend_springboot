@@ -48,6 +48,9 @@ public class ScanHistory {
     @Column(name = "files_scanned")
     private Integer filesScanned;
 
+    @Column(name = "sbom_id", length = 50)
+    private String sbomId;
+
     @Column(name = "duration_ms")
     private Double durationMs;
 

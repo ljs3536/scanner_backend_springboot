@@ -1,5 +1,6 @@
 package com.scanner.demo.scan.controller;
 
+import com.scanner.demo.scan.entity.ScanHistory;
 import com.scanner.demo.scan.service.ScanService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -40,5 +41,11 @@ public class ScanController {
             return ResponseEntity.internalServerError()
                     .body("스캔 처리 중 오류가 발생했습니다: " + e.getMessage());
         }
+    }
+
+    @GetMapping("/history")
+    public ResponseEntity<List<ScanHistory>> getScanHistory(@AuthenticationPrincipal String userId) {
+        List<ScanHistory> historyList = scanService.getScanHistoryList(userId);
+        return ResponseEntity.ok(historyList);
     }
 }
