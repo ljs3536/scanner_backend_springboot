@@ -1,5 +1,6 @@
 package com.scanner.demo.scan.controller;
 
+import com.scanner.demo.scan.dto.RunCodeRequest;
 import com.scanner.demo.scan.entity.ScanHistory;
 import com.scanner.demo.scan.service.ScanService;
 import lombok.RequiredArgsConstructor;
@@ -41,6 +42,15 @@ public class ScanController {
             return ResponseEntity.internalServerError()
                     .body("스캔 처리 중 오류가 발생했습니다: " + e.getMessage());
         }
+    }
+
+    @PostMapping("/run-code")
+    public ResponseEntity<Object> runCodeScan(
+            @RequestBody RunCodeRequest request,
+            @AuthenticationPrincipal String userId) {
+
+        Object result = scanService.processCodeScan(request, userId);
+        return ResponseEntity.ok(result);
     }
 
     @GetMapping("/history")

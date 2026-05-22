@@ -2,6 +2,7 @@ package com.scanner.demo.scan.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.scanner.demo.scan.dto.RunCodeRequest;
 import com.scanner.demo.scan.dto.SbomDetailResponse;
 import com.scanner.demo.scan.entity.ScanHistory;
 import com.scanner.demo.scan.entity.ScanIssue;
@@ -24,6 +25,8 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -57,11 +60,11 @@ public class ScanService {
     public Object processUploadScan(List<MultipartFile> files, boolean llmAdvisory,
                                     boolean generateSbom, String profile, String userId) {
 
-        // 1. 유저 조회 및 검증
+        // 유저 조회 및 검증
         User user = userRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
-        // 2. 분석기 엔진 폼 데이터 세팅
+        // 분석기 엔진 폼 데이터 세팅
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
         body.add("llm_advisory", String.valueOf(llmAdvisory).toLowerCase());
         body.add("generate_sbom", String.valueOf(generateSbom).toLowerCase());
@@ -74,7 +77,7 @@ public class ScanService {
             body.add("files", file.getResource());
         }
 
-        // 3. 1차 스캔 실행 요청
+        // 1차 스캔 실행 요청
         Map<String, Object> scanResult = restClient.post()
                 .uri("/api/v1/scan/upload")
                 .contentType(MediaType.MULTIPART_FORM_DATA)
@@ -91,54 +94,10 @@ public class ScanService {
         String sbomId = (String) scanResult.get("sbom_id");
         Map<String, Object> summary = (Map<String, Object>) scanResult.get("summary");
 
-        // 4-1. ScanHistory 저장 (수정된 구조 반영: sbomId 직접 보관)
-        ScanHistory scanHistory = ScanHistory.builder()
-                .scanId(scanId)
-                .user(user)
-                .target((String) scanResult.get("target"))
-                .policy((String) scanResult.get("profile"))
-                .language("python")
-                .issuesCritical(summary != null && summary.get("CRITICAL") != null ? ((Number) summary.get("CRITICAL")).intValue() : 0)
-                .issuesHigh(summary != null && summary.get("HIGH") != null ? ((Number) summary.get("HIGH")).intValue() : 0)
-                .issuesMedium(summary != null && summary.get("MEDIUM") != null ? ((Number) summary.get("MEDIUM")).intValue() : 0)
-                .issuesLow(summary != null && summary.get("INFO") != null ? ((Number) summary.get("INFO")).intValue() : 0) // INFO를 Low에 매핑거나 맞춤 조절
-                .filesScanned(scanResult.get("files_scanned") != null ? ((Number) scanResult.get("files_scanned")).intValue() : 0)
-                .durationMs(scanResult.get("duration_ms") != null ? ((Number) scanResult.get("duration_ms")).doubleValue() : 0.0)
-                .sbomId(sbomId)
-                .build();
+        // 공통 메서드 호출
+        saveScanData(scanResult, user, sbomId);
 
-        scanHistoryRepository.save(scanHistory);
-
-        // 4-2. ScanIssue (개별 취약점 목록) 저장
-        List<Map<String, Object>> issuesData = (List<Map<String, Object>>) scanResult.get("issues");
-        if (issuesData != null && !issuesData.isEmpty()) {
-            List<ScanIssue> issues = issuesData.stream().map(issue -> ScanIssue.builder()
-                    .scanHistory(scanHistory)
-                    .issueId((String) issue.get("id"))
-                    .type((String) issue.get("type"))
-                    .typeKo((String) issue.get("type_ko"))
-                    .severity((String) issue.get("severity"))
-                    .severityKo((String) issue.get("severity_ko"))
-                    .confidence(issue.get("confidence") != null ? ((Number) issue.get("confidence")).doubleValue() : null)
-                    .filePath((String) issue.get("file"))
-                    .lineNumber(issue.get("line") != null ? ((Number) issue.get("line")).intValue() : null)
-                    .columnNumber(issue.get("column") != null ? ((Number) issue.get("column")).intValue() : null)
-                    .message((String) issue.get("message"))
-                    .ruleId((String) issue.get("rule_id"))
-                    .cweId((String) issue.get("cwe"))
-                    .owaspId((String) issue.get("owasp"))
-                    .analyzer((String) issue.get("analyzer"))
-                    .codeSnippet((String) issue.get("code_snippet"))
-                    .detectionReasonKo((String) issue.get("detection_reason_ko"))
-                    .fixDescriptionKo((String) issue.get("fix_description_ko"))
-                    .fixCode((String) issue.get("fix_code"))
-                    .build()
-            ).toList();
-
-            scanIssueRepository.saveAll(issues);
-        }
-
-        // 4-3. Sbom 메타데이터 저장 및 추가 위협(Threat) 데이터 연동
+        // Sbom 메타데이터 저장 및 추가 위협(Threat) 데이터 연동
         if (sbomId != null) {
             Map<String, Object> sbomSummary = (Map<String, Object>) scanResult.get("sbom_summary");
             Integer finalRiskScore = 0; // 기본값
@@ -211,6 +170,36 @@ public class ScanService {
         return scanResult;
     }
 
+    @Transactional
+    public Map<String, Object> processCodeScan(RunCodeRequest request, String userId) {
+        // 1. 유저 검증
+        User user = userRepository.findByUserId(userId)
+                .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
+
+        // 2. 분석기 엔진의 /code 엔드포인트에 맞춘 JSON 페이로드 구성
+        Map<String, Object> analyzerPayload = new HashMap<>();
+        analyzerPayload.put("code", request.getCode());
+        analyzerPayload.put("filename", request.getFilename());
+        analyzerPayload.put("profile", request.getProfile());
+
+        // 3. 분석기 엔진 호출 (JSON 요청)
+        Map<String, Object> scanResult = restClient.post()
+                .uri("/api/v1/scan/code")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(analyzerPayload)
+                .retrieve()
+                .body(new ParameterizedTypeReference<Map<String, Object>>() {});
+
+        if (scanResult == null) {
+            throw new RuntimeException("분석기 엔진으로부터 응답을 받지 못했습니다.");
+        }
+
+        // 4. 공통 저장 로직 호출 (코드 스캔은 종속성이 없으므로 sbomId는 null 처리)
+        saveScanData(scanResult, user, null);
+
+        // 5. 프론트엔드 화면 렌더링을 위해 전체 데이터 반환
+        return scanResult;
+    }
 
     @Transactional(readOnly = true)
     public List<ScanHistory> getScanHistoryList(String userId) {
@@ -240,5 +229,60 @@ public class ScanService {
 
         // 3. 하나의 응답 객체로 조립하여 반환
         return new SbomDetailResponse(sbom, threats);
+    }
+
+
+    // ScanHistory 및 ScanIssue 공통 저장 메서드
+    private void saveScanData(Map<String, Object> scanResult, User user, String sbomId) {
+        Map<String, Object> summary = (Map<String, Object>) scanResult.get("summary");
+
+        // 1. ScanHistory 마스터 데이터 저장
+        ScanHistory scanHistory = ScanHistory.builder()
+                .scanId((String) scanResult.get("scan_id"))
+                .user(user)
+                .target((String) scanResult.get("target"))
+                .policy((String) scanResult.get("profile"))
+                .language((String) scanResult.get("language")) // 분석기가 감지한 언어 세팅
+                .issuesCritical(summary != null && summary.get("CRITICAL") != null ? ((Number) summary.get("CRITICAL")).intValue() : 0)
+                .issuesHigh(summary != null && summary.get("HIGH") != null ? ((Number) summary.get("HIGH")).intValue() : 0)
+                .issuesMedium(summary != null && summary.get("MEDIUM") != null ? ((Number) summary.get("MEDIUM")).intValue() : 0)
+                .issuesLow(summary != null && summary.get("LOW") != null ? ((Number) summary.get("LOW")).intValue() : 0)
+                .filesScanned(scanResult.get("files_scanned") != null ? ((Number) scanResult.get("files_scanned")).intValue() : 1) // 코드 스캔 시 기본값 1
+                .durationMs(scanResult.get("duration_ms") != null ? ((Number) scanResult.get("duration_ms")).doubleValue() : 0.0)
+                .startedAt(LocalDateTime.now())
+                .sbomId(sbomId) // 코드 스캔일 경우 null 삽입
+                .build();
+
+        scanHistoryRepository.save(scanHistory);
+
+        // 2. ScanIssue 세부 취약점 리스트 저장
+        List<Map<String, Object>> issuesData = (List<Map<String, Object>>) scanResult.get("issues");
+        if (issuesData != null && !issuesData.isEmpty()) {
+            List<ScanIssue> issues = issuesData.stream().map(issueData -> ScanIssue.builder()
+                    .scanHistory(scanHistory)
+                    .issueId((String) issueData.get("id"))
+                    .type((String) issueData.get("type"))
+                    .typeKo((String) issueData.get("type_ko"))
+                    .severity((String) issueData.get("severity"))
+                    .severityKo((String) issueData.get("severity_ko"))
+                    .confidence(issueData.get("confidence") != null ? ((Number) issueData.get("confidence")).doubleValue() : null)
+                    .filePath((String) issueData.get("file"))
+                    .lineNumber(issueData.get("line") != null ? ((Number) issueData.get("line")).intValue() : null)
+                    .columnNumber(issueData.get("column") != null ? ((Number) issueData.get("column")).intValue() : null)
+                    .message((String) issueData.get("message"))
+                    .ruleId((String) issueData.get("rule_id"))
+                    .cweId((String) issueData.get("cwe"))
+                    .owaspId((String) issueData.get("owasp"))
+                    .analyzer((String) issueData.get("analyzer"))
+                    .codeSnippet((String) issueData.get("code_snippet"))
+                    .detectionReasonKo((String) issueData.get("detection_reason_ko"))
+                    .fixDescriptionKo((String) issueData.get("fix_description_ko"))
+                    .fixCode((String) issueData.get("fix_code"))
+                    .build()
+            ).toList();
+
+            // JPA saveAll을 이용한 배치 처리로 성능 최적화
+            scanIssueRepository.saveAll(issues);
+        }
     }
 }

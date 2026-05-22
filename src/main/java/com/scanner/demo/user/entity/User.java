@@ -27,8 +27,17 @@ public class User {
     @Column(nullable = false, length = 255)
     private String password;
 
+    @Column(name = "name")
+    private String name;
+
+    @Column(name = "organization")
+    private String organization;
+
     @Column(length = 20)
     private String role;
+
+    @Column(name = "status")
+    private String status;
 
     @Column(name = "created_at", insertable = false, updatable = false)
     private LocalDateTime createdAt;
