@@ -1,10 +1,15 @@
 package com.scanner.demo.scan.controller;
 
 import com.scanner.demo.scan.dto.RunCodeRequest;
+import com.scanner.demo.scan.dto.ScanListResponse;
 import com.scanner.demo.scan.dto.ScanReportResponse;
 import com.scanner.demo.scan.entity.ScanHistory;
 import com.scanner.demo.scan.service.ScanService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
@@ -19,10 +24,13 @@ public class ScanController {
 
     private final ScanService scanService;
 
-    @GetMapping("")
-    public ResponseEntity<List<ScanHistory>> getScanHistory(@AuthenticationPrincipal String userId) {
-        List<ScanHistory> historyList = scanService.getScanHistoryList(userId);
-        return ResponseEntity.ok(historyList);
+    @GetMapping
+    public ResponseEntity<Page<ScanListResponse>> getScanList(
+            @AuthenticationPrincipal String userId,
+            @PageableDefault(size = 10, sort = "startedAt", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        Page<ScanListResponse> result = scanService.getScanHistories(userId, pageable);
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/run-upload")

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scanner.demo.scan.dto.RunCodeRequest;
 import com.scanner.demo.scan.dto.SbomDetailResponse;
+import com.scanner.demo.scan.dto.ScanListResponse;
 import com.scanner.demo.scan.dto.ScanReportResponse;
 import com.scanner.demo.scan.entity.ScanHistory;
 import com.scanner.demo.scan.entity.ScanIssue;
@@ -17,6 +18,8 @@ import com.scanner.demo.user.entity.User;
 import com.scanner.demo.user.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -90,12 +93,8 @@ public class ScanService {
         if (scanResult == null) {
             throw new RuntimeException("분석기 엔진으로부터 응답을 받지 못했습니다.");
         }
-
         // 4. 데이터베이스 분할 저장 시작
-        String scanId = (String) scanResult.get("scan_id");
         String sbomId = (String) scanResult.get("sbom_id");
-        Map<String, Object> summary = (Map<String, Object>) scanResult.get("summary");
-
         // 공통 메서드 호출
         saveScanData(scanResult, user, sbomId);
 
@@ -204,17 +203,15 @@ public class ScanService {
     }
 
     @Transactional(readOnly = true)
-    public List<ScanHistory> getScanHistoryList(String userId) {
-
-        // 1. JWT에 있던 userId(이메일)로 DB에서 User 객체(userSeq 포함)를 찾아옵니다.
+    public Page<ScanListResponse> getScanHistories(String userId, Pageable pageable) {
         User user = userRepository.findByUserId(userId)
                 .orElseThrow(() -> new IllegalArgumentException("사용자를 찾을 수 없습니다."));
 
-        // 2. startedAt 필드를 기준으로 내림차순 정렬 조건을 만듭니다.
-        Sort sort = Sort.by(Sort.Direction.DESC, "startedAt");
+        // 1. Pageable을 넘겨서 데이터와 전체 카운트를 함께 가져옴
+        Page<ScanHistory> historyPage = scanHistoryRepository.findAllByUser(user, pageable);
 
-        // 3. 찾아온 User 객체를 통째로 넘겨서 해당 사용자의 스캔 이력을 가져옵니다.
-        return scanHistoryRepository.findByUser(user, sort);
+        // 2. Page.map()을 이용해 Entity를 DTO로 깔끔하게 변환
+        return historyPage.map(ScanListResponse::new);
     }
 
     /**
@@ -245,11 +242,11 @@ public class ScanService {
 
         // 3. 심각도별 통계(severity_totals) 직접 집계
         Map<String, Integer> severityTotals = new LinkedHashMap<>();
-        severityTotals.put("CRITICAL", history.getIssuesCritical());
-        severityTotals.put("HIGH", history.getIssuesHigh());
-        severityTotals.put("MEDIUM", history.getIssuesMedium());
-        severityTotals.put("LOW", history.getIssuesLow());
-        severityTotals.put("INFO", 0); // INFO 등급이 있다면 추가 계산 필요
+        severityTotals.put("critical", history.getIssuesCritical());
+        severityTotals.put("high", history.getIssuesHigh());
+        severityTotals.put("medium", history.getIssuesMedium());
+        severityTotals.put("low", history.getIssuesLow());
+        severityTotals.put("info", 0); // INFO 등급이 있다면 추가 계산 필요
 
         // 4. Issue Entity -> Issue DTO 변환
         List<ScanReportResponse.IssueDto> issueDtos = rawIssues.stream().map(issue ->
@@ -291,7 +288,7 @@ public class ScanService {
     // ScanHistory 및 ScanIssue 공통 저장 메서드
     private void saveScanData(Map<String, Object> scanResult, User user, String sbomId) {
         Map<String, Object> summary = (Map<String, Object>) scanResult.get("summary");
-
+        System.out.println(scanResult);
         // 1. ScanHistory 마스터 데이터 저장
         ScanHistory scanHistory = ScanHistory.builder()
                 .scanId((String) scanResult.get("scan_id"))
