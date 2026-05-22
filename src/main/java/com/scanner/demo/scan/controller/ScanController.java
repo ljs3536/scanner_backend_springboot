@@ -1,6 +1,7 @@
 package com.scanner.demo.scan.controller;
 
 import com.scanner.demo.scan.dto.RunCodeRequest;
+import com.scanner.demo.scan.dto.ScanReportResponse;
 import com.scanner.demo.scan.entity.ScanHistory;
 import com.scanner.demo.scan.service.ScanService;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,12 @@ import java.util.List;
 public class ScanController {
 
     private final ScanService scanService;
+
+    @GetMapping("")
+    public ResponseEntity<List<ScanHistory>> getScanHistory(@AuthenticationPrincipal String userId) {
+        List<ScanHistory> historyList = scanService.getScanHistoryList(userId);
+        return ResponseEntity.ok(historyList);
+    }
 
     @PostMapping("/run-upload")
     public ResponseEntity<?> runUploadScan(
@@ -53,9 +60,9 @@ public class ScanController {
         return ResponseEntity.ok(result);
     }
 
-    @GetMapping("/history")
-    public ResponseEntity<List<ScanHistory>> getScanHistory(@AuthenticationPrincipal String userId) {
-        List<ScanHistory> historyList = scanService.getScanHistoryList(userId);
-        return ResponseEntity.ok(historyList);
+    @GetMapping("/{scanId}")
+    public ResponseEntity<ScanReportResponse> getScanReportDetail(@PathVariable("scanId") String scanId) {
+        ScanReportResponse reportResponse = scanService.getScanReport(scanId);
+        return ResponseEntity.ok(reportResponse);
     }
 }

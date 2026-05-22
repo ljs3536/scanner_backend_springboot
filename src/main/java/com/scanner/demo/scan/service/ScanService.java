@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scanner.demo.scan.dto.RunCodeRequest;
 import com.scanner.demo.scan.dto.SbomDetailResponse;
+import com.scanner.demo.scan.dto.ScanReportResponse;
 import com.scanner.demo.scan.entity.ScanHistory;
 import com.scanner.demo.scan.entity.ScanIssue;
 import com.scanner.demo.scan.entity.Sbom;
@@ -27,6 +28,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -231,6 +233,60 @@ public class ScanService {
         return new SbomDetailResponse(sbom, threats);
     }
 
+    @Transactional(readOnly = true)
+    public ScanReportResponse getScanReport(String scanId) {
+
+        // 1. 스캔 이력 마스터 조회
+        ScanHistory history = scanHistoryRepository.findById(scanId)
+                .orElseThrow(() -> new IllegalArgumentException("해당 스캔 이력을 찾을 수 없습니다: " + scanId));
+
+        // 2. 해당 스캔의 모든 취약점(Issues) 조회
+        List<ScanIssue> rawIssues = scanIssueRepository.findByScanHistory(history);
+
+        // 3. 심각도별 통계(severity_totals) 직접 집계
+        Map<String, Integer> severityTotals = new LinkedHashMap<>();
+        severityTotals.put("CRITICAL", history.getIssuesCritical());
+        severityTotals.put("HIGH", history.getIssuesHigh());
+        severityTotals.put("MEDIUM", history.getIssuesMedium());
+        severityTotals.put("LOW", history.getIssuesLow());
+        severityTotals.put("INFO", 0); // INFO 등급이 있다면 추가 계산 필요
+
+        // 4. Issue Entity -> Issue DTO 변환
+        List<ScanReportResponse.IssueDto> issueDtos = rawIssues.stream().map(issue ->
+                ScanReportResponse.IssueDto.builder()
+                        .issueSeq(issue.getIssueSeq())
+                        .issueId(issue.getIssueId())
+                        .issueTitle(issue.getType()) // 프론트의 issue_title에 영문 type을 매핑
+                        .typeKo(issue.getTypeKo())
+                        .severity(issue.getSeverity())
+                        .severityKo(issue.getSeverityKo())
+                        .filePath(issue.getFilePath())
+                        .lineNumber(issue.getLineNumber())
+                        .cweId(issue.getCweId())
+                        .owaspId(issue.getOwaspId())
+                        .confidence(issue.getConfidence())
+                        .description(issue.getMessage())
+                        .codeSnippet(issue.getCodeSnippet())
+                        .detectionReasonKo(issue.getDetectionReasonKo())
+                        .fixDescriptionKo(issue.getFixDescriptionKo())
+                        .fixCode(issue.getFixCode())
+                        .language(history.getLanguage()) // 부모의 언어 정보를 전달
+                        .build()
+        ).toList();
+
+        // 5. 최종 응답 DTO 조립
+        return ScanReportResponse.builder()
+                .metadata(ScanReportResponse.Metadata.builder()
+                        .scanId(history.getScanId())
+                        .targetName(history.getTarget())
+                        .scanDate(history.getStartedAt())
+                        .issuesCount(rawIssues.size())
+                        .frameworkDetected(history.getLanguage())
+                        .build())
+                .severityTotals(severityTotals)
+                .issues(issueDtos)
+                .build();
+    }
 
     // ScanHistory 및 ScanIssue 공통 저장 메서드
     private void saveScanData(Map<String, Object> scanResult, User user, String sbomId) {
