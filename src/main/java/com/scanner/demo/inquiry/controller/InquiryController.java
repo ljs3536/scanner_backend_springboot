@@ -13,9 +13,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
+import lombok.extern.slf4j.Slf4j;
 import java.util.Map;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/inquiries")
 @RequiredArgsConstructor
@@ -68,6 +69,8 @@ public class InquiryController {
                     .body(Map.of("message", "문의사항이 성공적으로 등록되었습니다."));
 
         } catch (Exception e) {
+            log.error("문의 등록 중 에러 발생: ", e);
+
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "문의 등록 중 시스템 오류가 발생했습니다."));
         }

@@ -17,6 +17,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import java.nio.file.StandardCopyOption;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -93,10 +94,11 @@ public class InquiryService {
         // 1. 파일이 첨부된 경우: 파일 로컬 저장 및 `files` 테이블 적재
         if (file != null && !file.isEmpty()) {
             try {
-                // 그룹 식별자용 UUID 생성 (ATT_ 접두사를 붙여 식별하기 쉽게 구성)
                 attachmentGroupId = "ATT_" + UUID.randomUUID().toString().substring(0, 8);
 
-                Path uploadPath = Paths.get(uploadDir);
+                // 상대 경로를 무조건 '절대 경로'로 변환 (Tomcat 임시 폴더 우회)
+                Path uploadPath = Paths.get(uploadDir).toAbsolutePath().normalize();
+
                 if (!Files.exists(uploadPath)) {
                     Files.createDirectories(uploadPath);
                 }
@@ -108,10 +110,10 @@ public class InquiryService {
                 String savedFileName = UUID.randomUUID().toString() + extension;
                 Path filePath = uploadPath.resolve(savedFileName);
 
-                // 실제 파일 저장
-                file.transferTo(filePath.toFile());
+                // transferTo() 대신 안전한 Files.copy() 사용
+                Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
 
-                // 💡 files 테이블에 데이터 Insert
+                // files 테이블에 데이터 Insert
                 AttachedFile attachedFile = AttachedFile.builder()
                         .attachmentGroupId(attachmentGroupId)
                         .fileName(originalFileName)
