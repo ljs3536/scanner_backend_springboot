@@ -30,6 +30,9 @@ public interface ScanHistoryRepository extends JpaRepository<ScanHistory, String
     @Query("SELECT COUNT(s) FROM ScanHistory s WHERE s.user.userSeq = :userSeq AND s.sbomId IS NOT NULL")
     long countSbomsByUser_UserSeq(@Param("userSeq") Integer userSeq);
 
+    @Query("SELECT SUM(s.issuesCritical) + SUM(s.issuesHigh) as vulnearabilities FROM ScanHistory s WHERE s.user.userSeq = :userSeq GROUP BY s.user.userSeq")
+    long countTotalVulnearabilitiesByUser_UserSeq(@Param("userSeq") Integer userSeq);
+
     public interface ChartDataProjection {
 
         // 쿼리에서 "s.language as name" 으로 지정한 값을 가져옵니다.

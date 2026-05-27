@@ -34,10 +34,11 @@ public class DashboardService {
         User user = userRepository.findByUserId(userId).orElseThrow();
         Integer userSeq = user.getUserSeq();
 
-        // 1. 요약 카드 데이터 계산
-        long totalScans = scanHistoryRepository.countByUser_UserSeq(userSeq);
-        long totalSboms = scanHistoryRepository.countSbomsByUser_UserSeq(userSeq);
-        long pendingInquiries = inquiryRepository.countByUser_UserSeqAndStatus(userSeq, "PNDNG");
+        // 요약 카드 데이터 계산
+        long totalScans = scanHistoryRepository.countByUser_UserSeq(userSeq);   // 총 스캔 횟수
+        long totalSboms = scanHistoryRepository.countSbomsByUser_UserSeq(userSeq);  // SBOM 횟수
+        long pendingInquiries = inquiryRepository.countByUser_UserSeqAndStatus(userSeq, "PNDNG"); //문의 개수
+        long totalVulnearabilities = scanHistoryRepository.countTotalVulnearabilitiesByUser_UserSeq(userSeq);
 
         // 2. 언어 분포 차트 데이터 가공
         var languageData = scanHistoryRepository.countScansByLanguage(userSeq).stream()
@@ -48,9 +49,9 @@ public class DashboardService {
                 .collect(Collectors.toList());
 
         // 3. SBOM 인사이트 데이터 가공 (null 처리 주의)
-        Long totalComponents = sbomRepository.sumComponentCountByUser(userSeq);
-        Long totalLicenses = sbomRepository.sumLicenseCountByUser(userSeq);
-        Double avgRisk = sbomRepository.getAverageRiskScoreByUser(userSeq);
+        Long totalComponents = sbomRepository.sumComponentCountByUser(userSeq); // 식벽된 컴포넌트
+        Long totalLicenses = sbomRepository.sumLicenseCountByUser(userSeq); // 식별된 라이선스
+        Double avgRisk = sbomRepository.getAverageRiskScoreByUser(userSeq); // 평균 위험도
 
         DashboardResponse.SbomInsights sbomInsights = DashboardResponse.SbomInsights.builder()
                 .totalComponents(totalComponents != null ? totalComponents : 0)
@@ -68,6 +69,7 @@ public class DashboardService {
                         .totalScans(totalScans)
                         .pendingInquiries(pendingInquiries)
                         .totalSboms(totalSboms)
+                        .totalVulnerabilities(totalVulnearabilities)
                         .build())
                 .languageDistribution(languageData)
                 .sbomInsights(sbomInsights)
